@@ -200,6 +200,7 @@ enum bpf_prog_type {
 	BPF_PROG_TYPE_EXT,
 	BPF_PROG_TYPE_LSM,
 	BPF_PROG_TYPE_SK_LOOKUP,
+    BPF_PROG_TYPE_SIGFILTER,
 };
 
 enum bpf_attach_type {
@@ -241,6 +242,7 @@ enum bpf_attach_type {
 	BPF_XDP_CPUMAP,
 	BPF_SK_LOOKUP,
 	BPF_XDP,
+    BPF_SIGFILTER,
 	__MAX_BPF_ATTACH_TYPE
 };
 
