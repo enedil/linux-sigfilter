@@ -1368,6 +1368,15 @@ struct task_struct {
 	struct llist_head               kretprobe_instances;
 #endif
 
+    struct {
+        struct bpf_prog* prog_;
+        enum {
+            TASK_BITS_32 = 32,
+            TASK_BITS_64 = 64,
+        } bits;
+    } task_sysfilter;
+    
+
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
