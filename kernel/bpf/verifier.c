@@ -22,6 +22,7 @@
 #include <linux/error-injection.h>
 #include <linux/bpf_lsm.h>
 #include <linux/btf_ids.h>
+#include <linux/bpf_sigfilter.h>
 
 #include "disasm.h"
 
@@ -11871,8 +11872,8 @@ static int check_attach_btf_id(struct bpf_verifier_env *env)
 	u64 key;
 
 	if (prog->aux->sleepable && prog->type != BPF_PROG_TYPE_TRACING &&
-	    prog->type != BPF_PROG_TYPE_LSM) {
-		verbose(env, "Only fentry/fexit/fmod_ret and lsm programs can be sleepable\n");
+	    prog->type != BPF_PROG_TYPE_LSM && prog->type != BPF_PROG_TYPE_SIGFILTER) {
+		verbose(env, "Only fentry/fexit/fmod_ret, lsm and sigfilter programs can be sleepable\n");
 		return -EINVAL;
 	}
 

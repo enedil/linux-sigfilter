@@ -928,8 +928,8 @@ static int set_sigfilter(struct task_struct *child, unsigned long fd) {
     if (IS_ERR(p))
         return PTR_ERR(p);
 #warning Should I check attach type?
-    if (p->expected_attach_type != BPF_SIGFILTER)
-        return -EINVAL;
+    //if (p->expected_attach_type != BPF_SIGFILTER)
+    //    return -EINVAL;
     child->sigfilter.prog = p;
     return 0;
 }

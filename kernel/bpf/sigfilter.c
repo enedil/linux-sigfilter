@@ -134,6 +134,8 @@ static bool sigfilter_valid_access(int off, int size, enum bpf_access_type type,
 				const struct bpf_prog *prog,
 				struct bpf_insn_access_aux *info) {
     bool (*fun)(int, int) = in_compat_syscall() ? sigfilter_valid_access_32 : sigfilter_valid_access_64;
+    if (type == BPF_WRITE)
+        return false;
 #warning valid_access -> shall I check expected_attach_type?
     /* XXX
     if (prog->expected_attach_type != BPF_SIGFILTER)
@@ -193,7 +195,7 @@ static int bpf_prog_test_run_sigfilter(struct bpf_prog *prog, const union bpf_at
 const struct bpf_verifier_ops sigfilter_verifier_ops = {
 	.get_func_proto		= sigfilter_func_proto,
 	.is_valid_access	= sigfilter_valid_access,
-	.convert_ctx_access	= bpf_convert_ctx_access,
+	//.convert_ctx_access	= bpf_convert_ctx_access,
 };
 
 const struct bpf_prog_ops sigfilter_prog_ops = {
