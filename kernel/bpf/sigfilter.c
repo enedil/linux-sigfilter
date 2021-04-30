@@ -234,4 +234,3 @@ static int sigfilter_setsiginfo(struct task_struct *child, const kernel_siginfo_
 	}
 	return error;
 }
-

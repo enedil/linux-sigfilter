@@ -1369,12 +1369,9 @@ struct task_struct {
 #endif
 
     struct {
-        struct bpf_prog* prog_;
-        enum {
-            TASK_BITS_32 = 32,
-            TASK_BITS_64 = 64,
-        } bits;
-    } task_sysfilter;
+        struct bpf_prog* prog;
+        bool is_compat;
+    } sigfilter;
     
 
 	/*

@@ -8,6 +8,7 @@
  * to continually duplicate across every architecture.
  */
 
+#include "asm/compat.h"
 #include <linux/capability.h>
 #include <linux/export.h>
 #include <linux/sched.h>
@@ -32,7 +33,11 @@
 #include <linux/compat.h>
 #include <linux/sched/signal.h>
 
+#include <linux/filter.h>
+
 #include <asm/syscall.h>	/* for syscall_get_* */
+
+static int unset_sigfilter(struct task_struct *child);
 
 /*
  * Access another process' address space via ptrace.
@@ -116,6 +121,8 @@ void __ptrace_unlink(struct task_struct *child)
 {
 	const struct cred *old_cred;
 	BUG_ON(!child->ptrace);
+
+    unset_sigfilter(child);
 
 	clear_task_syscall_work(child, SYSCALL_TRACE);
 #if defined(CONFIG_GENERIC_ENTRY) || defined(TIF_SYSCALL_EMU)
@@ -892,6 +899,42 @@ static int ptrace_regset(struct task_struct *task, int req, unsigned int type,
 					     kiov->iov_len, kiov->iov_base);
 }
 
+static int unset_sigfilter(struct task_struct *child) {
+#warning Verify if child is traced by caller.
+    if (!(child->ptrace & PT_PTRACED))
+        return -ESRCH;
+    if (child->sigfilter.prog == NULL)
+        return -EINVAL;
+    bpf_prog_put(child->sigfilter.prog);
+    child->sigfilter.prog = NULL;
+    return 0;
+}
+
+static int set_sigfilter(struct task_struct *child, unsigned long fd) {
+#warning Verify if child is traced by caller.
+    int ret;
+    struct bpf_prog *p;
+    if (!(child->ptrace & PT_PTRACED))
+        return -ESRCH;
+    if (child->sigfilter.prog != NULL) {
+        ret = unset_sigfilter(child);
+        if (ret)
+            return ret;
+    }
+    BUG_ON(child->sigfilter.prog != NULL);
+
+    child->sigfilter.is_compat = in_compat_syscall();
+    p = bpf_prog_get_type(fd, BPF_PROG_TYPE_SIGFILTER);
+    if (IS_ERR(p))
+        return PTR_ERR(p);
+#warning Should I check attach type?
+    if (p->expected_attach_type != BPF_SIGFILTER)
+        return -EINVAL;
+    child->sigfilter.prog = p;
+    return 0;
+}
+
+
 /*
  * This is declared in linux/regset.h and defined in machine-dependent
  * code.  We put the export here, near the primary machine-neutral use,
@@ -1221,6 +1264,14 @@ int ptrace_request(struct task_struct *child, long request,
 	case PTRACE_SECCOMP_GET_METADATA:
 		ret = seccomp_get_metadata(child, addr, datavp);
 		break;
+
+    case PTRACE_SET_SIGFILTER:
+        ret = set_sigfilter(child, data);
+        break;
+
+    case PTRACE_UNSET_SIGFILTER:
+        ret = unset_sigfilter(child);
+        break;
 
 	default:
 		break;

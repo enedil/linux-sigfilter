@@ -1295,6 +1295,23 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
 	return ret;
 }
 
+int sigfilter_call(struct kernel_siginfo *info, struct task_struct *t) {
+    void* arg = (void*)info;
+    compat_siginfo_t compat_siginfo;
+
+    if (t->sigfilter.prog == NULL)
+        return 0;
+
+    if (t->sigfilter.is_compat) {
+        copy_siginfo_to_external32(&compat_siginfo, info);
+        arg = &compat_siginfo;
+    }
+//#error
+    // XXX
+
+    return 0;
+}
+
 /*
  * Force a signal that the process can't ignore: if necessary
  * we unblock the signal and change any SIG_IGN to SIG_DFL.
@@ -1331,7 +1348,11 @@ force_sig_info_to_task(struct kernel_siginfo *info, struct task_struct *t)
 	 */
 	if (action->sa.sa_handler == SIG_DFL && !t->ptrace)
 		t->signal->flags &= ~SIGNAL_UNKILLABLE;
-	ret = send_signal(sig, info, t, PIDTYPE_PID);
+
+    ret = sigfilter_call(info, t);
+    if (ret == 0) {
+        ret = send_signal(sig, info, t, PIDTYPE_PID);
+    }
 	spin_unlock_irqrestore(&t->sighand->siglock, flags);
 
 	return ret;
