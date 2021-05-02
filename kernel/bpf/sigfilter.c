@@ -9,7 +9,9 @@
 
 
 BPF_CALL_3(bpf_copy_to_user, void __user *, uptr, const void*, ptr, unsigned long, size) {
-    int ret = copy_to_user(uptr, ptr, size);
+    int ret;
+    // printk("copy_to_user size=%lu\n", size);
+    ret = copy_to_user(uptr, ptr, size);
     if (unlikely(ret)) {
         return -EFAULT;
     }
@@ -40,21 +42,34 @@ find_regset(const struct user_regset_view *view, unsigned int type)
 	return NULL;
 }
 
+static const struct user_regset *get_regset(unsigned type) {
+    const struct user_regset_view *view = task_user_regset_view(current);
+   	return find_regset(view, type);
+}
 
 BPF_CALL_4(bpf_getregset, unsigned, type, unsigned long, offset, void *, ptr, unsigned long, size) {
-#warning enedil CHECK NO BUG
-    const struct user_regset_view *view = task_user_regset_view(current);
-   	const struct user_regset *regset = find_regset(view, type);
-
+    int ret;
     void *data;
-    int ret = regset_get_alloc(current, regset, offset + size, &data);
-    if (ret)
+   	const struct user_regset *regset = get_regset(type);
+    if (regset == NULL)
+        return -EINVAL;
+
+    if (size + offset < offset)
+        return -EINVAL;
+    if (offset % regset->size != 0)
+        return -EINVAL;
+    if (size % regset->size != 0)
+        return -EINVAL;
+
+    ret = regset_get_alloc(current, regset, offset + size, &data);
+    //printk("get regset (%d) regset=%p offset=%lu size=%lu offset+size=%lu\n", ret, regset, offset, size, offset+size);
+    if (ret < 0 || ret != offset + size)
         return ret;
 
     memcpy(ptr, data + offset, size);
     kfree(data);
 
-    return ret;
+    return 0;
 }
 
 const struct bpf_func_proto bpf_getregset_proto = {
@@ -68,8 +83,20 @@ const struct bpf_func_proto bpf_getregset_proto = {
 };
 
 BPF_CALL_4(bpf_setregset, unsigned, type, unsigned long, offset, const void *, ptr, unsigned long, size) {
-#warning enedil IMPLEMENT ME
-    return -EINVAL;
+    int ret;
+   	const struct user_regset *regset = get_regset(type);
+    if (regset == NULL)
+        return -EINVAL;
+    if (size + offset < offset)
+        return -EINVAL;
+    if (offset % regset->size != 0)
+        return -EINVAL;
+    if (size % regset->size != 0)
+        return -EINVAL;
+
+    // printk("set regset regset=%p offset=%lu size=%lu ptr=%p\n", regset, offset, size, ptr);
+    ret = regset->set(current, regset, offset, size, ptr, NULL);
+    return ret;
 }
 
 const struct bpf_func_proto bpf_setregset_proto = {
@@ -148,91 +175,9 @@ static bool sigfilter_valid_access(int off, int size, enum bpf_access_type type,
     return fun(off, size);
 }
 
-
-static u32 bpf_convert_ctx_access(enum bpf_access_type type,
-				  const struct bpf_insn *src,
-				  struct bpf_insn *dst,
-				  struct bpf_prog *prog, u32 *target_size) {
-    return 42;
-}
-/*
-struct bpf_verifier_ops {
-	/x* return eBPF function prototype for verification *x/
-	const struct bpf_func_proto *
-	(*get_func_proto)(enum bpf_func_id func_id,
-			  const struct bpf_prog *prog);
-
-	/x* return true if 'size' wide access at offset 'off' within bpf_context
-	 * with 'type' (read or write) is allowed
-	 *x/
-	bool (*is_valid_access)(int off, int size, enum bpf_access_type type,
-				const struct bpf_prog *prog,
-				struct bpf_insn_access_aux *info);
-	int (*gen_prologue)(struct bpf_insn *insn, bool direct_write,
-			    const struct bpf_prog *prog);
-	int (*gen_ld_abs)(const struct bpf_insn *orig,
-			  struct bpf_insn *insn_buf);
-	u32 (*convert_ctx_access)(enum bpf_access_type type,
-				  const struct bpf_insn *src,
-				  struct bpf_insn *dst,
-				  struct bpf_prog *prog, u32 *target_size);
-	int (*btf_struct_access)(struct bpf_verifier_log *log,
-				 const struct btf *btf,
-				 const struct btf_type *t, int off, int size,
-				 enum bpf_access_type atype,
-				 u32 *next_btf_id);
-};
-*/
-
-static int bpf_prog_test_run_sigfilter(struct bpf_prog *prog, const union bpf_attr *kattr, union bpf_attr __user *uattr) {
-#warning test run sigfilter
-    // XXX
-    printk("NDSJOKAFDSAO");
-    return 3;
-}
-
-
 const struct bpf_verifier_ops sigfilter_verifier_ops = {
 	.get_func_proto		= sigfilter_func_proto,
 	.is_valid_access	= sigfilter_valid_access,
-	//.convert_ctx_access	= bpf_convert_ctx_access,
 };
 
-const struct bpf_prog_ops sigfilter_prog_ops = {
-	.test_run		= bpf_prog_test_run_sigfilter,
-};
-
-
-// Copied from kernel/ptrace.c
-static int sigfilter_getsiginfo(struct task_struct *child, kernel_siginfo_t *info)
-{
-	unsigned long flags;
-	int error = -ESRCH;
-
-	if (lock_task_sighand(child, &flags)) {
-		error = -EINVAL;
-		if (likely(child->last_siginfo != NULL)) {
-			copy_siginfo(info, child->last_siginfo);
-			error = 0;
-		}
-		unlock_task_sighand(child, &flags);
-	}
-	return error;
-}
-
-// Copied from kernel/ptrace.c
-static int sigfilter_setsiginfo(struct task_struct *child, const kernel_siginfo_t *info)
-{
-	unsigned long flags;
-	int error = -ESRCH;
-
-	if (lock_task_sighand(child, &flags)) {
-		error = -EINVAL;
-		if (likely(child->last_siginfo != NULL)) {
-			copy_siginfo(child->last_siginfo, info);
-			error = 0;
-		}
-		unlock_task_sighand(child, &flags);
-	}
-	return error;
-}
+const struct bpf_prog_ops sigfilter_prog_ops = {};

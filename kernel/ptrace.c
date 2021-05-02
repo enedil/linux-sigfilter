@@ -33,11 +33,13 @@
 #include <linux/compat.h>
 #include <linux/sched/signal.h>
 
+#include <linux/mutex.h>
 #include <linux/filter.h>
+#include <linux/bpf_sigfilter.h>
 
 #include <asm/syscall.h>	/* for syscall_get_* */
 
-static int unset_sigfilter(struct task_struct *child);
+static void __unset_sigfilter_interruptible(struct task_struct* t);
 
 /*
  * Access another process' address space via ptrace.
@@ -122,7 +124,6 @@ void __ptrace_unlink(struct task_struct *child)
 	const struct cred *old_cred;
 	BUG_ON(!child->ptrace);
 
-    unset_sigfilter(child);
 
 	clear_task_syscall_work(child, SYSCALL_TRACE);
 #if defined(CONFIG_GENERIC_ENTRY) || defined(TIF_SYSCALL_EMU)
@@ -136,6 +137,7 @@ void __ptrace_unlink(struct task_struct *child)
 	put_cred(old_cred);
 
 	spin_lock(&child->sighand->siglock);
+    __unset_sigfilter_nolock(child);
 	child->ptrace = 0;
 	/*
 	 * Clear all pending traps and TRAPPING.  TRAPPING should be
@@ -899,38 +901,67 @@ static int ptrace_regset(struct task_struct *task, int req, unsigned int type,
 					     kiov->iov_len, kiov->iov_base);
 }
 
+void __unset_sigfilter_nolock(struct task_struct* t) {
+    struct bpf_prog *p = t->sigfilter.prog;
+    if (p) {
+        bpf_prog_put(p);
+        t->sigfilter.prog = NULL;
+    }
+}
+
+void __unset_sigfilter(struct task_struct *t) {
+    printk("taking mutex for %p from unset\n", t);
+	spin_lock(&t->sighand->siglock);
+    //mutex_lock(&t->sigfilter.lock);
+    printk("took mutex for %p from unset\n", t);
+    __unset_sigfilter_nolock(t);
+	spin_lock(&t->sighand->siglock);
+    //mutex_unlock(&t->sigfilter.lock);
+    printk("unlock mutex for %p from unset\n", t);
+}
+
+static void __unset_sigfilter_interruptible(struct task_struct* t) {
+    int locked;
+    printk("taking mutex for %p from unset int\n", t);
+    locked = mutex_lock_interruptible(&t->sigfilter.lock);
+    printk("took mutex for %p from unset int\n", t);
+    __unset_sigfilter_nolock(t);
+    if (locked == 0) {
+        mutex_unlock(&t->sigfilter.lock);
+        printk("unlock mutex for %p from unset int\n", t);
+    }
+}
+
 static int unset_sigfilter(struct task_struct *child) {
-#warning Verify if child is traced by caller.
     if (!(child->ptrace & PT_PTRACED))
         return -ESRCH;
     if (child->sigfilter.prog == NULL)
         return -EINVAL;
-    bpf_prog_put(child->sigfilter.prog);
-    child->sigfilter.prog = NULL;
+    __unset_sigfilter(child);
     return 0;
 }
 
 static int set_sigfilter(struct task_struct *child, unsigned long fd) {
-#warning Verify if child is traced by caller.
-    int ret;
     struct bpf_prog *p;
     if (!(child->ptrace & PT_PTRACED))
         return -ESRCH;
-    if (child->sigfilter.prog != NULL) {
-        ret = unset_sigfilter(child);
-        if (ret)
-            return ret;
-    }
-    BUG_ON(child->sigfilter.prog != NULL);
 
-    child->sigfilter.is_compat = in_compat_syscall();
     p = bpf_prog_get_type(fd, BPF_PROG_TYPE_SIGFILTER);
     if (IS_ERR(p))
         return PTR_ERR(p);
-#warning Should I check attach type?
-    //if (p->expected_attach_type != BPF_SIGFILTER)
-    //    return -EINVAL;
+
+    printk("taking mutex for %p from set\n", child);
+	spin_lock(&child->sighand->siglock);
+    //mutex_lock(&child->sigfilter.lock);
+    printk("took mutex for %p from set\n", child);
+    if (child->sigfilter.prog != NULL) {
+        bpf_prog_put(child->sigfilter.prog);
+    }
+    child->sigfilter.is_compat = in_compat_syscall();
     child->sigfilter.prog = p;
+	spin_unlock(&child->sighand->siglock);
+    //mutex_unlock(&child->sigfilter.lock);
+    printk("unlock mutex for %p from set\n", child);
     return 0;
 }
 

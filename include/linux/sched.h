@@ -1370,6 +1370,7 @@ struct task_struct {
 
     struct {
         struct bpf_prog* prog;
+        struct mutex lock;
         bool is_compat;
     } sigfilter;
     

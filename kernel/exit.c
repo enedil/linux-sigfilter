@@ -69,6 +69,8 @@
 #include <asm/unistd.h>
 #include <asm/mmu_context.h>
 
+#include <linux/bpf_sigfilter.h>
+
 static void __unhash_process(struct task_struct *p, bool group_dead)
 {
 	nr_threads--;
@@ -840,6 +842,8 @@ void __noreturn do_exit(long code)
 	 * FIXME: do that only when needed, using sched_exit tracepoint
 	 */
 	flush_ptrace_hw_breakpoint(tsk);
+
+
 
 	exit_tasks_rcu_start();
 	exit_notify(tsk, group_dead);
