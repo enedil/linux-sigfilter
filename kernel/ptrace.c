@@ -39,8 +39,6 @@
 
 #include <asm/syscall.h>	/* for syscall_get_* */
 
-static void __unset_sigfilter_interruptible(struct task_struct* t);
-
 /*
  * Access another process' address space via ptrace.
  * Source/target buffer must be kernel space,
@@ -902,34 +900,26 @@ static int ptrace_regset(struct task_struct *task, int req, unsigned int type,
 }
 
 void __unset_sigfilter_nolock(struct task_struct* t) {
+    /*
     struct bpf_prog *p = NULL;
     p = __atomic_exchange_n(&t->sigfilter.prog, NULL, __ATOMIC_SEQ_CST);
     if (p) {
         bpf_prog_put(p);
     }
+    */
+    struct bpf_prog *p = t->sigfilter.prog;
+    if (p != NULL) {
+        bpf_prog_put(p);
+        t->sigfilter.prog = NULL;
+    }
 }
 
 void __unset_sigfilter(struct task_struct *t) {
-    printk("taking mutex for %p from unset\n", t);
 	//spin_lock(&t->sighand->siglock);
     mutex_lock(&t->sigfilter.lock);
-    printk("took mutex for %p from unset\n", t);
     __unset_sigfilter_nolock(t);
 	//spin_lock(&t->sighand->siglock);
     mutex_unlock(&t->sigfilter.lock);
-    printk("unlock mutex for %p from unset\n", t);
-}
-
-static void __unset_sigfilter_interruptible(struct task_struct* t) {
-    int locked;
-    printk("taking mutex for %p from unset int\n", t);
-    locked = mutex_lock_interruptible(&t->sigfilter.lock);
-    printk("took mutex for %p from unset int\n", t);
-    __unset_sigfilter_nolock(t);
-    if (locked == 0) {
-        mutex_unlock(&t->sigfilter.lock);
-        printk("unlock mutex for %p from unset int\n", t);
-    }
 }
 
 static int unset_sigfilter(struct task_struct *child) {
@@ -950,10 +940,8 @@ static int set_sigfilter(struct task_struct *child, unsigned long fd) {
     if (IS_ERR(p))
         return PTR_ERR(p);
 
-    printk("taking mutex for %p from set\n", child);
 	//spin_lock(&child->sighand->siglock);
     mutex_lock(&child->sigfilter.lock);
-    printk("took mutex for %p from set\n", child);
     if (child->sigfilter.prog != NULL) {
         bpf_prog_put(child->sigfilter.prog);
     }
@@ -961,7 +949,6 @@ static int set_sigfilter(struct task_struct *child, unsigned long fd) {
     child->sigfilter.prog = p;
 	//spin_unlock(&child->sighand->siglock);
     mutex_unlock(&child->sigfilter.lock);
-    printk("unlock mutex for %p from set\n", child);
     return 0;
 }
 

@@ -10,7 +10,6 @@
 
 BPF_CALL_3(bpf_copy_to_user, void __user *, uptr, const void*, ptr, unsigned long, size) {
     int ret;
-    // printk("copy_to_user size=%lu\n", size);
     ret = copy_to_user(uptr, ptr, size);
     if (unlikely(ret)) {
         return -EFAULT;
@@ -62,7 +61,6 @@ BPF_CALL_4(bpf_getregset, unsigned, type, unsigned long, offset, void *, ptr, un
         return -EINVAL;
 
     ret = regset_get_alloc(current, regset, offset + size, &data);
-    //printk("get regset (%d) regset=%p offset=%lu size=%lu offset+size=%lu\n", ret, regset, offset, size, offset+size);
     if (ret < 0 || ret != offset + size)
         return ret;
 
@@ -94,7 +92,6 @@ BPF_CALL_4(bpf_setregset, unsigned, type, unsigned long, offset, const void *, p
     if (size % regset->size != 0)
         return -EINVAL;
 
-    // printk("set regset regset=%p offset=%lu size=%lu ptr=%p\n", regset, offset, size, ptr);
     ret = regset->set(current, regset, offset, size, ptr, NULL);
     return ret;
 }
@@ -128,6 +125,8 @@ sigfilter_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog) {
 static bool sigfilter_valid_access_32(int off, int size) {
     if (off >= sizeof(struct compat_siginfo))
         return false;
+    if (size > sizeof(struct compat_siginfo) - off)
+        return false;
     switch (off) {
     case bpf_ctx_range(struct compat_siginfo, si_code):
     case bpf_ctx_range(struct compat_siginfo, si_errno):
@@ -137,12 +136,13 @@ static bool sigfilter_valid_access_32(int off, int size) {
     default:
         return false;
     }
-#warning ctx_wide_access_ok itd
     return true;
 }
 
 static bool sigfilter_valid_access_64(int off, int size) {
     if (off >= sizeof(kernel_siginfo_t))
+        return false;
+    if (size > sizeof(kernel_siginfo_t) - off)
         return false;
     switch (off) {
     case bpf_ctx_range(kernel_siginfo_t, si_code):
@@ -153,7 +153,6 @@ static bool sigfilter_valid_access_64(int off, int size) {
     default:
         return false;
     }
-#warning ctx_wide_access_ok itd
     return true;
 }
 
@@ -163,12 +162,14 @@ static bool sigfilter_valid_access(int off, int size, enum bpf_access_type type,
     bool (*fun)(int, int) = in_compat_syscall() ? sigfilter_valid_access_32 : sigfilter_valid_access_64;
     if (type == BPF_WRITE)
         return false;
-#warning valid_access -> shall I check expected_attach_type?
-    /* XXX
+    // valid_access -> shall I check expected_attach_type?
+    /* 
     if (prog->expected_attach_type != BPF_SIGFILTER)
         return false;
     */
     if (off < 0)
+        return false;
+    if (size < 0)
         return false;
     if (off % size != 0)
         return false;

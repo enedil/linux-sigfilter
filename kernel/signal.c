@@ -1348,10 +1348,13 @@ force_sig_info_to_task(struct kernel_siginfo *info, struct task_struct *t)
 	struct k_sigaction *action;
 	int sig = info->si_signo;
 
-    if (t->sigfilter.prog && info->si_code != SI_USER && current == t) {
-        ret = sigfilter_call(info, t);
-        if (ret)
-            return ret;
+    if (t->sigfilter.prog && current == t) {
+        WARN_ON_ONCE(info->si_code != SI_KERNEL);
+        if (info->si_code == SI_KERNEL) {
+            ret = sigfilter_call(info, t);
+            if (ret)
+                return ret;
+        }
     }
 
 	spin_lock_irqsave(&t->sighand->siglock, flags);
