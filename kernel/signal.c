@@ -1303,12 +1303,12 @@ int sigfilter_call(struct kernel_siginfo *info, struct task_struct *t) {
     struct bpf_prog *prog;
 
     printk("taking mutex for %p from call\n", t);
-    //mutex_lock(&t->sigfilter.lock);
-    spin_lock(&t->sighand->siglock);
+    mutex_lock(&t->sigfilter.lock);
+    //spin_lock(&t->sighand->siglock);
     printk("took mutex for %p from call\n", t);
     if (t->sigfilter.prog == NULL) {
-        //mutex_unlock(&t->sigfilter.lock);
-        spin_unlock(&t->sighand->siglock);
+        mutex_unlock(&t->sigfilter.lock);
+        //spin_unlock(&t->sighand->siglock);
         printk("unlock mutex for %p from call\n", t);
         return 0;
     }
@@ -1319,11 +1319,11 @@ int sigfilter_call(struct kernel_siginfo *info, struct task_struct *t) {
     }
     prog = t->sigfilter.prog;
     bpf_prog_inc(prog);
-    //mutex_unlock(&t->sigfilter.lock);
-    spin_unlock(&t->sighand->siglock);
+    mutex_unlock(&t->sigfilter.lock);
+    //spin_unlock(&t->sighand->siglock);
     printk("unlock mutex for %p from call\n", t);
 
-    ret = bpf_prog_run_pin_on_cpu(prog, arg);
+    ret = BPF_PROG_RUN(prog, arg);
     bpf_prog_put(prog);
 
     return ret;
