@@ -1,0 +1,2 @@
+1. Przed pierwszym użyciem uruchamiamy `sudo ./install-deps.sh`
+2. Uruchamiamy `./run.sh` żeby przetestować rozwiązanie

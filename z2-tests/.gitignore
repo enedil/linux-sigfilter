@@ -1,0 +1,7 @@
+*.o
+main
+test
+test-check-ctx
+test-unload
+test32
+libelf/x32
