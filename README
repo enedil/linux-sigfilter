@@ -1,18 +1,13 @@
-Linux kernel
-============
+Sigfilter is based on Linux 5.11.2.
 
-There are several guides for kernel developers and users. These guides can
-be rendered in a number of formats, like HTML and PDF. Please read
-Documentation/admin-guide/README.rst first.
+`task_struct` structure has been extended with additional field `sigfilter`, which holds a spinlock, a pointer to BPF program, as well as a boolean indicator, whether the attachment happened from a process in compability mode (32 bit on amd64).
 
-In order to build the documentation, use ``make htmldocs`` or
-``make pdfdocs``.  The formatted documentation can also be read online at:
+Apart from addition of types and implementation of helpers required by the task, I implemented the logic of attaching programs and of the execution.
 
-    https://www.kernel.org/doc/html/latest/
+I employ the eBPF verifier to check if specific fields in the envirinment structure are accessed.
 
-There are various text files in the Documentation/ subdirectory,
-several of them using the Restructured Text markup notation.
-
-Please read the Documentation/process/changes.rst file, as it contains the
-requirements for building and running the kernel, and information about
-the problems which may result by upgrading your kernel.
+Main change loci:
+- copy_process function, which initializes the BPF pointer and the spinlock,
+- ptrace_request, which processes the requests of the tracer,
+- force_sig_info_to_task, which executes the supplied BPF program,
+- __ptrace_unlink, which removes the signal filter, when the process stops being traced.
